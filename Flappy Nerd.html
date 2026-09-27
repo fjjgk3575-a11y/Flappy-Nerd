@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flappy Nerd</title>
+<style>
+  :root{
+    --bg:#bfeaf5;
+    --panel-bg:rgba(255,255,255,.95);
+    --text:#1b2733;
+    --accent:#2dd4bf;
+    --accent-dark:#0f9488;
+    --btn-text:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --panel-bg:rgba(18,28,36,.92); --text:#eef6fa; }
+  }
+  :root[data-theme="dark"]{ --panel-bg:rgba(18,28,36,.92); --text:#eef6fa; }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);
+    font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100dvh;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    overflow:hidden; -webkit-tap-highlight-color:transparent; user-select:none;
+  }
+  #wrap{
+    position:relative; width:100%; max-width:420px; aspect-ratio:9/16; max-height:100dvh;
+    box-shadow:0 10px 40px rgba(0,0,0,.25); border-radius:14px; overflow:hidden; touch-action:manipulation;
+  }
+  canvas{display:block;width:100%;height:100%;}
+  .screen{
+    position:absolute;inset:0; display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;padding:24px;text-align:center; background:rgba(10,20,30,.35); color:var(--text);
+  }
+  .hidden{display:none!important;}
+  .panel{
+    background:var(--panel-bg); border-radius:20px; padding:28px 24px; width:100%;max-width:280px;
+    box-shadow:0 8px 24px rgba(0,0,0,.2); display:flex;flex-direction:column;gap:12px;align-items:center;
+  }
+  .logo{ font-size:2.2em;font-weight:800;line-height:1.05;margin:0 0 4px;
+    color:#0f766e;text-shadow:2px 2px 0 #fff, 3px 4px 6px rgba(0,0,0,.2); letter-spacing:1px; }
+  .logo span{color:#f59e0b;}
+  .glasses-icon{font-size:2.6em;margin-bottom:-6px;}
+  button{
+    font:inherit;font-weight:700;font-size:1em;letter-spacing:.5px;
+    padding:14px 20px;border:none;border-radius:14px; background:var(--accent);color:var(--btn-text);
+    cursor:pointer;width:100%; box-shadow:0 4px 0 var(--accent-dark); transition:transform .05s;
+  }
+  button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--accent-dark);}
+  button.secondary{background:#94a3b8;box-shadow:0 4px 0 #64748b;}
+  h2{margin:0;color:var(--text);}
+  .row{display:flex;align-items:center;justify-content:space-between;width:100%;}
+  .toggle{width:52px;height:28px;border-radius:20px;background:#cbd5e1;position:relative;cursor:pointer;flex-shrink:0;}
+  .toggle.on{background:var(--accent);}
+  .toggle .knob{position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;
+    transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+  .toggle.on .knob{left:26px;}
+  #hud{ position:absolute;top:calc(env(safe-area-inset-top,0px) + 18px);left:0;right:0;
+    text-align:center;font-size:2.4em;font-weight:800;color:#fff;
+    text-shadow:2px 2px 0 rgba(0,0,0,.25);pointer-events:none; }
+  .new-hs{color:#f59e0b;font-weight:800;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div id="hud" class="hidden">0</div>
+
+  <div id="menu" class="screen">
+    <div class="panel">
+      <div class="glasses-icon">🤓</div>
+      <h1 class="logo">FLAPPY<br><span>NERD</span></h1>
+      <button id="btnPlay">SPIELEN</button>
+      <button id="btnScores" class="secondary">HIGHSCORES</button>
+      <button id="btnSettings" class="secondary">EINSTELLUNGEN</button>
+    </div>
+  </div>
+
+  <div id="gameover" class="screen hidden">
+    <div class="panel">
+      <h2>GAME OVER</h2>
+      <p style="margin:0;">SCORE: <strong id="finalScore">0</strong></p>
+      <p style="margin:0;">HIGHSCORE: <strong id="finalHigh">0</strong></p>
+      <p id="newHsMsg" class="new-hs hidden">NEUER HIGHSCORE! 🎉</p>
+      <button id="btnRetry">NOCHMAL SPIELEN</button>
+      <button id="btnToMenu" class="secondary">HAUPTMENÜ</button>
+    </div>
+  </div>
+
+  <div id="scores" class="screen hidden">
+    <div class="panel">
+      <h2>HIGHSCORE</h2>
+      <p style="font-size:2em;margin:0;font-weight:800;color:var(--accent-dark);" id="hsValue">0</p>
+      <button id="btnScoresBack" class="secondary">ZURÜCK</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen hidden">
+    <div class="panel">
+      <h2>EINSTELLUNGEN</h2>
+      <div class="row"><span>Sound</span><div class="toggle on" id="toggleSound"><div class="knob"></div></div></div>
+      <div class="row"><span>Musik</span><div class="toggle on" id="toggleMusic"><div class="knob"></div></div></div>
+      <button id="btnSettingsBack" class="secondary">ZURÜCK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- Canvas Setup (scharfe Darstellung auf jedem Gerät) ----------
+  const wrap = document.getElementById('wrap');
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const BASE_W = 360, BASE_H = 640;
+
+  function resize(){
+    const rect = wrap.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width*dpr);
+    canvas.height = Math.round(rect.height*dpr);
+    ctx.setTransform(canvas.width/BASE_W,0,0,canvas.height/BASE_H,0,0);
+  }
+  window.addEventListener('resize',resize);
+  window.addEventListener('orientationchange',resize);
+  resize();
+
+  // ---------- Speicher (Highscore & Einstellungen, überlebt Neustart) ----------
+  const store = {
+    get(k,d){ try{ const v = localStorage.getItem(k); return v===null?d:JSON.parse(v);}catch(e){return d;} },
+    set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+  let highscore = store.get('flappyNerd_highscore', 0);
+  let soundOn = store.get('flappyNerd_sound', true);
+  let musicOn = store.get('flappyNerd_music', true);
+
+  // ---------- Sound (kurze, dezente Arcade-Töne, ohne externe Dateien) ----------
+  let actx=null;
+  function ac(){ if(!actx){ actx = new (window.AudioContext||window.webkitAudioContext)(); } return actx; }
+  function beep(freq,dur,type,vol,delay){
+    if(!soundOn) return;
+    const a = ac(); const t0 = a.currentTime + (delay||0);
+    const osc = a.createOscillator(); const gain = a.createGain();
+    osc.type = type||'sine'; osc.frequency.setValueAtTime(freq,t0);
+    gain.gain.setValueAtTime(vol||0.2,t0);
+    gain.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+    osc.connect(gain); gain.connect(a.destination);
+    osc.start(t0); osc.stop(t0+dur);
+  }
+  const sfx = {
+    jump:()=>beep(520,0.09,'square',0.18),
+    score:()=>beep(920,0.12,'sine',0.2),
+    hit:()=>beep(140,0.35,'sawtooth',0.25),
+    highscore:()=>{[660,880,1100].forEach((f,i)=>beep(f,0.14,'sine',0.22,i*0.12));}
+  };
+  let musicTimer=null, musicStep=0;
+  const musicNotes=[392,440,523,440,392,349,392,440];
+  function startMusic(){
+    if(musicTimer||!musicOn) return;
+    musicTimer = setInterval(()=>{
+      if(!musicOn){ return; }
+      beep(musicNotes[musicStep%musicNotes.length],0.25,'triangle',0.05);
+      musicStep++;
+    },320);
+  }
+  function stopMusic(){ clearInterval(musicTimer); musicTimer=null; musicStep=0; }
+
+  // ---------- Spielzustand ----------
+  const GROUND_H = 70;
+  const GRAVITY = 0.45, JUMP_V = -8;
+  const PIPE_W = 58, PIPE_GAP = 172, PIPE_SPACING = 210;
+  let state = 'menu'; // menu | playing | gameover
+  let bird, pipes, score, speed, frame, clouds;
+
+  function resetGame(){
+    bird = {x:100,y:BASE_H/2,vy:0,r:20,rot:0};
+    pipes = [];
+    let px = BASE_W + 150;
+    for(let i=0;i<4;i++){ pipes.push(makePipe(px)); px += PIPE_SPACING; }
+    score = 0; speed = 2.6; frame = 0;
+  }
+  function makePipe(x){
+    const margin=60;
+    const gapY = margin + Math.random()*(BASE_H-GROUND_H-PIPE_GAP-margin*2) + PIPE_GAP/2;
+    return {x, gapY, passed:false};
+  }
+  function initClouds(){
+    clouds=[];
+    for(let i=0;i<5;i++){
+      clouds.push({x:Math.random()*BASE_W,y:30+Math.random()*140,r:24+Math.random()*22,s:0.25+Math.random()*0.3});
+    }
+  }
+  initClouds();
+  resetGame();
+
+  // ---------- Eingabe: Klick, Leertaste, Touch ----------
+  function flap(){
+    if(state==='playing'){ bird.vy = JUMP_V; sfx.jump(); }
+    else if(state==='menu'){ startGame(); }
+  }
+  wrap.addEventListener('pointerdown', (e)=>{
+    if(e.target.closest && e.target.closest('button,.toggle')) return;
+    if(state==='menu' || state==='playing'){ e.preventDefault(); flap(); }
+  });
+  window.addEventListener('keydown',(e)=>{
+    if(e.code==='Space'){ e.preventDefault(); if(state==='menu'||state==='playing') flap(); }
+  });
+
+  // ---------- Bildschirme ----------
+  const screens = { menu:document.getElementById('menu'), gameover:document.getElementById('gameover'), scores:document.getElementById('scores'), settings:document.getElementById('settings') };
+  const hud = document.getElementById('hud');
+  function showScreen(name){
+    Object.values(screens).forEach(s=>s.classList.add('hidden'));
+    if(name && screens[name]) screens[name].classList.remove('hidden');
+  }
+  function startGame(){
+    resetGame(); state='playing';
+    showScreen(null); hud.classList.remove('hidden'); hud.textContent='0';
+    startMusic();
+  }
+  function endGame(){
+    state='gameover'; sfx.hit(); stopMusic(); hud.classList.add('hidden');
+    let isNew=false;
+    if(score>highscore){ highscore=score; store.set('flappyNerd_highscore',highscore); isNew=true; sfx.highscore(); }
+    document.getElementById('finalScore').textContent=score;
+    document.getElementById('finalHigh').textContent=highscore;
+    document.getElementById('newHsMsg').classList.toggle('hidden',!isNew);
+    showScreen('gameover');
+  }
+
+  document.getElementById('btnPlay').onclick=()=>{ ac(); startGame(); };
+  document.getElementById('btnRetry').onclick=()=>{ startGame(); };
+  document.getElementById('btnToMenu').onclick=()=>{ state='menu'; showScreen('menu'); };
+  document.getElementById('btnScores').onclick=()=>{ document.getElementById('hsValue').textContent=highscore; showScreen('scores'); };
+  document.getElementById('btnScoresBack').onclick=()=>{ showScreen('menu'); };
+  document.getElementById('btnSettings').onclick=()=>{ showScreen('settings'); };
+  document.getElementById('btnSettingsBack').onclick=()=>{ showScreen('menu'); };
+  function syncToggle(el,on){ el.classList.toggle('on',on); }
+  const tSound=document.getElementById('toggleSound'), tMusic=document.getElementById('toggleMusic');
+  syncToggle(tSound,soundOn); syncToggle(tMusic,musicOn);
+  tSound.onclick=()=>{ soundOn=!soundOn; store.set('flappyNerd_sound',soundOn); syncToggle(tSound,soundOn); };
+  tMusic.onclick=()=>{ musicOn=!musicOn; store.set('flappyNerd_music',musicOn); syncToggle(tMusic,musicOn); if(!musicOn) stopMusic(); else if(state==='playing') startMusic(); };
+
+  // ---------- Update (Physik, Pipes, Kollision) ----------
+  function update(){
+    if(state!=='playing') return;
+    frame++;
+    bird.vy += GRAVITY; bird.y += bird.vy;
+    bird.rot = Math.max(-0.5,Math.min(1.2, bird.vy/10));
+
+    for(const p of pipes){
+      p.x -= speed;
+      if(!p.passed && p.x+PIPE_W < bird.x-bird.r){ p.passed=true; score++; hud.textContent=score; sfx.score(); speed = 2.6+Math.min(score*0.045,2.6); }
+    }
+    if(pipes[0].x < -PIPE_W-40){ pipes.shift(); pipes.push(makePipe(pipes[pipes.length-1].x+PIPE_SPACING)); }
+
+    for(const c of clouds){ c.x -= c.s; if(c.x < -c.r) c.x = BASE_W+c.r; }
+
+    if(bird.y+bird.r > BASE_H-GROUND_H || bird.y-bird.r<0){ endGame(); return; }
+    for(const p of pipes){
+      if(bird.x+bird.r > p.x && bird.x-bird.r < p.x+PIPE_W){
+        if(bird.y-bird.r < p.gapY-PIPE_GAP/2 || bird.y+bird.r > p.gapY+PIPE_GAP/2){ endGame(); return; }
+      }
+    }
+  }
+
+  // ---------- Zeichnen ----------
+  function roundRect(x,y,w,h,r){
+    if(typeof r==='number') r=[r,r,r,r];
+    ctx.beginPath();
+    ctx.moveTo(x+r[0],y);
+    ctx.arcTo(x+w,y,x+w,y+h,r[1]);
+    ctx.arcTo(x+w,y+h,x,y+h,r[2]);
+    ctx.arcTo(x,y+h,x,y,r[3]);
+    ctx.arcTo(x,y,x+w,y,r[0]);
+    ctx.closePath();
+  }
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,BASE_H);
+    g.addColorStop(0,'#8fe0f2'); g.addColorStop(1,'#d8f7ee');
+    ctx.fillStyle=g; ctx.fillRect(0,0,BASE_W,BASE_H);
+    ctx.fillStyle='rgba(255,255,255,.85)';
+    for(const c of clouds){
+      ctx.beginPath();
+      ctx.ellipse(c.x,c.y,c.r,c.r*0.6,0,0,7);
+      ctx.ellipse(c.x+c.r*0.6,c.y+c.r*0.1,c.r*0.7,c.r*0.5,0,0,7);
+      ctx.fill();
+    }
+  }
+  function drawPipe(p){
+    const topH = p.gapY - PIPE_GAP/2;
+    const botY = p.gapY + PIPE_GAP/2;
+    const g = ctx.createLinearGradient(p.x,0,p.x+PIPE_W,0);
+    g.addColorStop(0,'#0f9488'); g.addColorStop(0.5,'#2dd4bf'); g.addColorStop(1,'#0f9488');
+    ctx.fillStyle=g;
+    roundRect(p.x,0,PIPE_W,topH,[0,0,10,10]); ctx.fill();
+    roundRect(p.x,botY,PIPE_W,BASE_H-GROUND_H-botY,[10,10,0,0]); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.35)';
+    ctx.fillRect(p.x+8,0,6,topH);
+    ctx.fillRect(p.x+8,botY,6,BASE_H-GROUND_H-botY);
+  }
+  function drawGround(){
+    ctx.fillStyle='#c9a86a'; ctx.fillRect(0,BASE_H-GROUND_H,BASE_W,GROUND_H);
+    ctx.fillStyle='#8bc34a'; ctx.fillRect(0,BASE_H-GROUND_H,BASE_W,10);
+    ctx.strokeStyle='rgba(0,0,0,.08)'; ctx.lineWidth=2;
+    for(let x=0;x<BASE_W;x+=20){ ctx.beginPath(); ctx.moveTo(x,BASE_H-GROUND_H+14); ctx.lineTo(x+10,BASE_H-GROUND_H+14); ctx.stroke(); }
+  }
+  function drawBird(){
+    const {x,y,rot}=bird;
+    const flapOff = Math.sin(frame*0.35)*10;
+    ctx.save();
+    ctx.translate(x,y); ctx.rotate(rot*0.35);
+    ctx.fillStyle='#f97316'; roundRect(-24,-10,14,24,4); ctx.fill(); // Rucksack
+    ctx.fillStyle='#f59e0b';
+    ctx.beginPath(); ctx.ellipse(-4,4+flapOff*0.3,12,7,Math.PI/5,0,7); ctx.fill(); // Arm/Flügel
+    ctx.fillStyle='#ffd8a8';
+    ctx.beginPath(); ctx.arc(0,0,20,0,7); ctx.fill(); // Kopf/Körper (kompakt)
+    ctx.fillStyle='#4b3621';
+    ctx.beginPath(); // zerzauste Haare
+    ctx.moveTo(-16,-14); ctx.lineTo(-10,-26); ctx.lineTo(-4,-15);
+    ctx.lineTo(2,-27); ctx.lineTo(8,-15); ctx.lineTo(14,-24); ctx.lineTo(16,-12);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#1b2733'; ctx.lineWidth=2.5; ctx.fillStyle='rgba(255,255,255,.6)';
+    ctx.beginPath(); ctx.arc(-8,-2,8,0,7); ctx.fill(); ctx.stroke(); // Brille links
+    ctx.beginPath(); ctx.arc(9,-2,8,0,7); ctx.fill(); ctx.stroke(); // Brille rechts
+    ctx.beginPath(); ctx.moveTo(0,-2); ctx.lineTo(1,-2); ctx.stroke(); // Steg
+    ctx.fillStyle='#1b2733';
+    ctx.beginPath(); ctx.arc(-8,-2,2.4,0,7); ctx.arc(9,-2,2.4,0,7); ctx.fill(); // Augen
+    ctx.beginPath(); ctx.arc(2,8,6,0.15*Math.PI,0.85*Math.PI); ctx.stroke(); // Lächeln
+    ctx.restore();
+  }
+  function draw(){
+    drawSky();
+    for(const p of pipes) drawPipe(p);
+    drawGround();
+    drawBird();
+  }
+
+  // ---------- Loop ----------
+  function loop(){ update(); draw(); requestAnimationFrame(loop); }
+  loop();
+})();
+</script>
+</body>
+</html>
